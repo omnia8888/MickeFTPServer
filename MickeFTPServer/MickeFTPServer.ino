@@ -105,6 +105,9 @@ void loop() {
 	currentUserState = newUser;
 
 	while (ftpClient.connected()) {
+		//Clear command and parameter strings from old info.
+		ftpCommand = "";
+		ftpParameter = "";
 		//Read incoming commands
 		readFtpCommandString();
 		
@@ -121,6 +124,17 @@ void loop() {
 		if (currentUserState == newUser) {
 			userConnect();
 		}
+		
+		//Run the commands
+		if (ftpCommand != "")
+		{
+			userCommands();
+			testCommand();
+
+			
+		}
+
+
 		checkTimeOut();
 	}
 		
@@ -212,6 +226,7 @@ boolean userCommands()
 	boolean foundCommand = false;
 	if (ftpCommand == "USER")
 	{
+		//provides the user logon.
 		foundCommand = true;
 		if (ftpParameter == FTP_USER){
 			ftpClient.println("331 User name okay, need password.");
@@ -222,6 +237,7 @@ boolean userCommands()
 		}
 	}
 	else if (ftpCommand == "PASS")
+	//Checks password and grants user access to all commands.
 	{
 		foundCommand = true;
 		//Check for userID is provided
@@ -246,6 +262,11 @@ boolean userCommands()
 boolean testCommand()
 {
 
+	if (ftpCommand == "TEST")
+	{
+		if (!securityCheck(userAuthenticated)) return true;
+		ftpClient.println("666 Testing");
+	}
 }
 
 boolean securityCheck(byte allowedUserState)
