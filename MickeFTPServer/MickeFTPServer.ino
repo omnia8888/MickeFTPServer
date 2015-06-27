@@ -1,0 +1,280 @@
+/*
+ Name:		MickeFTPServer.ino
+ Created:	6/27/2015 7:02:48 AM
+ Author:	Micke
+*/
+
+#include <SPI.h>
+#include <Ethernet.h>
+#include <SD.h>
+
+//Enable Debugging
+#define DEBUG
+
+//Default values
+#define FTP_USER "admin"
+#define FTP_PASSWORD "pass"
+
+#define CONNECTION_TIMEOUT 30000 //The user login idle before being disconnected
+
+// size of buffer used to capture HTTP requests
+#define REQ_BUF_SZ   50
+
+// MAC address from Ethernet shield sticker under board
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+IPAddress ip(192, 168, 1, 99); // IP address, may need to change depending on network
+EthernetServer ftpServer(99);  // create a server at port 21
+EthernetClient ftpClient;
+
+//File webFile;               // the web page file on the SD card
+char HTTP_req[REQ_BUF_SZ] = { 0 }; // buffered HTTP request stored as null terminated string
+char req_index = 0;              // index into HTTP_req buffer
+
+
+enum serverState
+{
+	idle
+};
+
+enum userState
+{
+	newConnection,
+	noUserId,
+	noPassword,
+	userAuthenticated
+};
+
+userState currentUserState;
+serverState currentServerState;
+
+String cmdString;
+String ftpCommand;
+String ftpParameter;
+long sessionTimeOut;
+
+void serialDebug(String desc = "", String val = "", String comment = ""){
+	Serial.print(desc);
+	if (val != "") Serial.print(": ");
+	Serial.print(val);
+	if (comment != "") Serial.print(" //");
+	Serial.println(comment);
+	delay(500);
+}
+
+// the setup function runs once when you press reset or power the board
+void setup() {
+	Serial.begin(9600);       // for debugging
+
+	// disable Ethernet chip and SD Card
+	pinMode(10, OUTPUT);
+	digitalWrite(10, HIGH);
+	pinMode(4, OUTPUT);
+	digitalWrite(4, HIGH);
+
+	// initialize SD card
+	Serial.println("Initializing SD card...");
+	if (!SD.begin(4)) {
+		Serial.println("ERROR - SD card initialization failed!");
+		return;    // init failed
+	}
+	Serial.println("SUCCESS - SD card initialized.");
+
+
+	//Running with DHCP
+	//Ethernet.begin(mac);
+
+	//Run with fixed IP
+	Ethernet.begin(mac, ip);  // initialize Ethernet device with Fixed IP
+
+	// print your local IP address:
+	Serial.print("My IP address: ");
+	for (byte thisByte = 0; thisByte < 4; thisByte++) {
+		// print the value of each byte of the IP address:
+		Serial.print(Ethernet.localIP()[thisByte], DEC);
+		Serial.print(".");
+	}
+	Serial.println(" ");
+	Serial.println("Setup done!");
+
+	ftpServer.begin();           // start to listen for clients
+}
+
+// the loop function runs over and over again until power down or reset
+void loop() {
+	ftpClient = ftpServer.available();  // try to get client
+	currentUserState = newConnection;
+
+	while (ftpClient.connected()) {
+
+
+		//Checks if it's a new connection and sends welcome message
+		if (currentUserState == newConnection) {
+			userConnect();
+		}
+
+		//Read incoming commands
+		readFtpCommandString();
+
+		checkTimeOut();
+
+	}
+		
+
+
+	
+}
+
+void userConnect() 
+{
+#ifdef DEBUG
+	serialDebug("User connected");
+#endif
+	//Send welcome message to connected user
+	ftpClient.println("220 Welcome to MickeFTPServer");
+	ftpClient.println("220 This is an FTP Server for Arduino.");
+	ftpClient.println("220 Developed by Micke");
+	currentUserState = noUserId;
+	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+}
+
+void userDisconnect(){
+#ifdef DEBUG
+	serialDebug("User disconnected");
+#endif
+	
+	ftpClient.println("221 Disconnecting\r\n");
+	ftpClient.stop();
+}
+
+void readFtpCommandString() {
+	boolean endFound = false;
+	int cmdLenght;
+	while (ftpClient.available()) {
+		//Serial.println("char found!");
+		char c = ftpClient.read();
+		//Read until until carrige return or new line is found.
+		if (c == '\n' || c == '\r')
+		{
+#ifdef DEBUG
+			serialDebug("Recived string", cmdString);
+#endif
+			//Stop reading
+			endFound = true;
+			//cmdLenght = cmdString.length();
+		}
+		
+		cmdString += c;
+		sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+	}
+	
+	//If end is found Parse the retrived cmdString
+	if (endFound)
+	{
+		//Remove inital and ending white spaces
+		cmdString.trim();
+		//Search for the position first space character
+		int firstSpaceCharIndex = cmdString.indexOf(' ');
+		//Divide cmdString into command and parameter
+		ftpCommand = cmdString.substring(0, firstSpaceCharIndex);
+		ftpParameter = cmdString.substring(firstSpaceCharIndex);
+		ftpParameter.trim();
+		//Reset cmdString
+		cmdString = "";
+		
+		Serial.print("CMD = \"");
+		Serial.print(ftpCommand);
+		Serial.print("\" PARAM = \"");
+		Serial.print(ftpParameter);
+		Serial.println("\"");
+
+
+#ifdef DEBUG
+		serialDebug("FTP CMD", ftpCommand);
+		serialDebug("FTP Param", ftpParameter);
+#endif
+
+	}
+
+
+
+
+}
+
+
+
+ void checkTimeOut()
+ {
+	 //Checks if the current session has reached its timout value
+	 if (sessionTimeOut < millis()) {
+		 //if so closing the connection
+		 userDisconnect();
+	 }
+ }
+
+//int8_t FtpServer::readChar()
+//{
+//	int8_t rc = -1;
+//
+//	if (client.available())
+//	{
+//		char c = client.read();
+//#ifdef FTP_DEBUG
+//		Serial << c;
+//#endif
+//		if (c == '\\')
+//			c = '/';
+//		if (c != '\r')
+//			if (c != '\n')
+//			{
+//				if (iCL < FTP_CMD_SIZE)
+//					cmdLine[iCL++] = c;
+//				else
+//					rc = -2; //  Line too long
+//			}
+//			else
+//			{
+//				cmdLine[iCL] = 0;
+//				command[0] = 0;
+//				parameters = NULL;
+//				// empty line?
+//				if (iCL == 0)
+//					rc = 0;
+//				else
+//				{
+//					rc = iCL;
+//					// search for space between command and parameters
+//					parameters = strchr(cmdLine, ' ');
+//					if (parameters != NULL)
+//					{
+//						if (parameters - cmdLine > 4)
+//							rc = -2; // Syntax error
+//						else
+//						{
+//							strncpy(command, cmdLine, parameters - cmdLine);
+//							command[parameters - cmdLine] = 0;
+//
+//							while (*(++parameters) == ' ')
+//								;
+//						}
+//					}
+//					else if (strlen(cmdLine) > 4)
+//						rc = -2; // Syntax error.
+//					else
+//						strcpy(command, cmdLine);
+//					iCL = 0;
+//				}
+//			}
+//		if (rc > 0)
+//			for (uint8_t i = 0; i < strlen(command); i++)
+//				command[i] = toupper(command[i]);
+//		if (rc == -2)
+//		{
+//			iCL = 0;
+//			client << "500 Syntax error\r\n";
+//		}
+//	}
+//	return rc;
+//}
+
+
+
