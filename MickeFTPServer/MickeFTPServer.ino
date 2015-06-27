@@ -14,16 +14,19 @@
 //Default values
 #define FTP_USER "admin"
 #define FTP_PASSWORD "pass"
+//#define FTP_SERVER_IP "192, 168, 1, 99"
+#define FTP_PORT 21
+// MAC address from Ethernet shield sticker under board
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+IPAddress ip(192, 168, 1, 99); // IP address, may need to change depending on network
 
 #define CONNECTION_TIMEOUT 30000 //The user login idle before being disconnected
 
 // size of buffer used to capture HTTP requests
 #define REQ_BUF_SZ   50
 
-// MAC address from Ethernet shield sticker under board
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-IPAddress ip(192, 168, 1, 99); // IP address, may need to change depending on network
-EthernetServer ftpServer(99);  // create a server at port 21
+
+EthernetServer ftpServer(FTP_PORT);  // create a server at port 21
 EthernetClient ftpClient;
 
 //File webFile;               // the web page file on the SD card
@@ -33,7 +36,9 @@ char req_index = 0;              // index into HTTP_req buffer
 
 enum serverState
 {
-	idle
+	noConnection,
+	authenticatingUser,
+	connectionEstabliched
 };
 
 enum userState
@@ -101,29 +106,38 @@ void setup() {
 
 // the loop function runs over and over again until power down or reset
 void loop() {
+	currentServerState = noConnection;
+	//Broadcasting welcome message to make FTP clients to connect and start sending commands
+	if (currentServerState == noConnection) {
+		ftpServer.println("220 Welcome to MickeFTPServer");
+		delay(1000);
+	}
+
 	ftpClient = ftpServer.available();  // try to get client
-	currentUserState = newUser;
+
+	delay(1000);
+
+	if (ftpClient) {
+#ifdef DEBUG
+		serialDebug("User connected.");
+#endif
+		currentServerState = authenticatingUser;
+		currentUserState = UserId;
+		sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+		
+		//Checks if it's a new connection and sends welcome message
+		//if (currentUserState == newUser) {
+		//	userConnect();
+		//}
+	}
 
 	while (ftpClient.connected()) {
+
 		//Clear command and parameter strings from old info.
 		ftpCommand = "";
 		ftpParameter = "";
 		//Read incoming commands
 		readFtpCommandString();
-		
-		//switch (currentUserState)
-		//{
-		//case newUser:
-		//	userConnect();
-		//	currentUserState = UserId;
-		//	break;
-		//case UserId
-		//}
-		
-		//Checks if it's a new connection and sends welcome message
-		if (currentUserState == newUser) {
-			userConnect();
-		}
 		
 		//Run the commands
 		if (ftpCommand != "")
@@ -140,18 +154,18 @@ void loop() {
 		
 }
 
-void userConnect() 
-{
-#ifdef DEBUG
-	serialDebug("User connected");
-#endif
-	//Send welcome message to connected user
-	ftpClient.println("220 Welcome to MickeFTPServer");
-	ftpClient.println("220 This is an FTP Server for Arduino.");
-	ftpClient.println("220 Developed by Micke");
-	currentUserState = UserId;
-	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
-}
+//void userConnect() 
+//{
+//#ifdef DEBUG
+//	serialDebug("User connected");
+//#endif
+//	//Send welcome message to connected user
+//	ftpClient.println("220 Welcome to MickeFTPServer");
+//	ftpClient.println("220 This is an FTP Server for Arduino.");
+//	ftpClient.println("220 Developed by Micke");
+//	currentUserState = UserId;
+//	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+//}
 
 void userDisconnect(){
 #ifdef DEBUG
@@ -176,9 +190,6 @@ void readFtpCommandString() {
 		//Read until until carrige return or new line is found.
 		if (c == '\n' || c == '\r')
 		{
-#ifdef DEBUG
-			serialDebug("Recived string", cmdString);
-#endif
 			//Stop reading
 			endFound = true;
 			//cmdLenght = cmdString.length();
@@ -202,11 +213,6 @@ void readFtpCommandString() {
 		//Reset cmdString
 		cmdString = "";
 		
-		Serial.print("CMD = \"");
-		Serial.print(ftpCommand);
-		Serial.print("\" PARAM = \"");
-		Serial.print(ftpParameter);
-		Serial.println("\"");
 
 
 #ifdef DEBUG
