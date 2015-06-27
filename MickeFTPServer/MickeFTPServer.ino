@@ -38,9 +38,9 @@ enum serverState
 
 enum userState
 {
-	newConnection,
-	noUserId,
-	noPassword,
+	newUser,
+	UserId,
+	Password,
 	userAuthenticated
 };
 
@@ -102,26 +102,28 @@ void setup() {
 // the loop function runs over and over again until power down or reset
 void loop() {
 	ftpClient = ftpServer.available();  // try to get client
-	currentUserState = newConnection;
+	currentUserState = newUser;
 
 	while (ftpClient.connected()) {
-
-
-		//Checks if it's a new connection and sends welcome message
-		if (currentUserState == newConnection) {
-			userConnect();
-		}
-
 		//Read incoming commands
 		readFtpCommandString();
-
+		
+		//switch (currentUserState)
+		//{
+		//case newUser:
+		//	userConnect();
+		//	currentUserState = UserId;
+		//	break;
+		//case UserId
+		//}
+		
+		//Checks if it's a new connection and sends welcome message
+		if (currentUserState == newUser) {
+			userConnect();
+		}
 		checkTimeOut();
-
 	}
 		
-
-
-	
 }
 
 void userConnect() 
@@ -133,7 +135,7 @@ void userConnect()
 	ftpClient.println("220 Welcome to MickeFTPServer");
 	ftpClient.println("220 This is an FTP Server for Arduino.");
 	ftpClient.println("220 Developed by Micke");
-	currentUserState = noUserId;
+	currentUserState = UserId;
 	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
 }
 
@@ -144,6 +146,11 @@ void userDisconnect(){
 	
 	ftpClient.println("221 Disconnecting\r\n");
 	ftpClient.stop();
+}
+
+void checkForUserID()
+{
+
 }
 
 void readFtpCommandString() {
@@ -200,8 +207,59 @@ void readFtpCommandString() {
 
 }
 
+boolean userCommands()
+{
+	boolean foundCommand = false;
+	if (ftpCommand == "USER")
+	{
+		foundCommand = true;
+		if (ftpParameter == FTP_USER){
+			ftpClient.println("331 User name okay, need password.");
+			currentUserState = Password;
+		}
+		else {
+			ftpClient.println("332 Need account for login.");
+		}
+	}
+	else if (ftpCommand == "PASS")
+	{
+		foundCommand = true;
+		//Check for userID is provided
+		if (currentUserState < Password){
+			ftpClient.println("503 Login with USER first.");
+		}
+		else
+		{
+			if (ftpParameter == FTP_PASSWORD) {
+				ftpClient.println("230 User logged in.");
+				currentUserState = userAuthenticated;
+			}
+			else
+			{
+				ftpClient.println("530 Not logged in.");
+			}
+		}
+	}
+	return foundCommand;
+}
 
+boolean testCommand()
+{
 
+}
+
+boolean securityCheck(byte allowedUserState)
+{
+	boolean isAllowed = false;
+	if (currentUserState >= allowedUserState) {
+		isAllowed = true;
+	}
+	else
+	{
+		ftpClient.println("530 Please login with USER and PASS.");
+	}
+	return(isAllowed);
+}
  void checkTimeOut()
  {
 	 //Checks if the current session has reached its timout value
