@@ -2,7 +2,7 @@
  Name:		MickeFTPServer.ino
  Created:	6/27/2015 7:02:48 AM
  Author:	Micke
-*/
+ */
 
 #include <EthernetUdp.h>
 #include <EthernetServer.h>
@@ -62,7 +62,8 @@ String ftpCommand;
 String ftpParameter;
 long sessionTimeOut;
 
-void serialDebug(String desc = "", String val = "", String comment = ""){
+void serialDebug(String desc = "", String val = "", String comment = "")
+{
 	Serial.print(desc);
 	if (val != "") Serial.print(": ");
 	Serial.print(val);
@@ -72,7 +73,8 @@ void serialDebug(String desc = "", String val = "", String comment = ""){
 }
 
 // the setup function runs once when you press reset or power the board
-void setup() {
+void setup()
+{
 	Serial.begin(9600);       // for debugging
 
 	// disable Ethernet chip and SD Card
@@ -92,7 +94,7 @@ void setup() {
 	if (DHCP_ENABLED) {
 		Ethernet.begin(mac); //Get ip address from DHCP
 	}
-	else {		
+	else {
 		Ethernet.begin(mac, ip);  // initialize Ethernet device with Fixed IP
 	}
 
@@ -106,12 +108,12 @@ void setup() {
 	}
 	Serial.println(" ");
 	Serial.println("Setup done!");
-
 	ftpServer.begin();           // start to listen for clients
 }
 
 // the loop function runs over and over again until power down or reset
-void loop() {
+void loop()
+{
 	currentServerState = noConnection;
 	//Broadcasting welcome message to make FTP clients to connect and start sending commands
 	if (currentServerState == noConnection) {
@@ -129,26 +131,20 @@ void loop() {
 	}
 
 	while (ftpClient.connected()) {
-
 		//Clear command and parameter strings from old info.
 		ftpCommand = "";
 		ftpParameter = "";
 		//Read incoming commands
 		readFtpCommandString();
-		
+
 		//Run the commands
-		if (ftpCommand != "")
-		{
+		if (ftpCommand != "") {
 			userCommands();
 			testCommand();
-
-			
 		}
-
-
 		checkTimeOut();
 	}
-		
+
 }
 
 //void userConnect() 
@@ -164,11 +160,12 @@ void loop() {
 //	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
 //}
 
-void userDisconnect(){
+void userDisconnect()
+{
 #ifdef DEBUG
 	serialDebug("User disconnected");
 #endif
-	
+
 	ftpClient.println("221 Disconnecting\r\n");
 	ftpClient.stop();
 }
@@ -178,27 +175,26 @@ void checkForUserID()
 
 }
 
-void readFtpCommandString() {
+void readFtpCommandString()
+{
 	boolean endFound = false;
 	int cmdLenght;
 	while (ftpClient.available()) {
 		//Serial.println("char found!");
 		char c = ftpClient.read();
 		//Read until until carrige return or new line is found.
-		if (c == '\n' || c == '\r')
-		{
+		if (c == '\n' || c == '\r') {
 			//Stop reading
 			endFound = true;
 			//cmdLenght = cmdString.length();
 		}
-		
+
 		cmdString += c;
 		sessionTimeOut = millis() + CONNECTION_TIMEOUT;
 	}
-	
+
 	//If end is found Parse the retrived cmdString
-	if (endFound)
-	{
+	if (endFound) {
 		//Remove inital and ending white spaces
 		cmdString.trim();
 		//Search for the position first space character
@@ -209,7 +205,7 @@ void readFtpCommandString() {
 		ftpParameter.trim();
 		//Reset cmdString
 		cmdString = "";
-		
+
 #ifdef DEBUG
 		//Sending recived command and parameter to serial com
 		Serial.print("Recived CMD: ");
@@ -223,11 +219,10 @@ void readFtpCommandString() {
 boolean userCommands()
 {
 	boolean foundCommand = false;
-	if (ftpCommand == "AUTH")
-	{
+	if (ftpCommand == "AUTH") {
 		foundCommand = true;
 		ftpClient.println("504 Security mechanism not implemented.");
-		
+
 		//if (ftpParameter == "TLS"){
 		//	ftpClient.println("534 Server does not support TLS secure connections.");
 		//}
@@ -237,11 +232,10 @@ boolean userCommands()
 		//}
 
 	}
-	else if (ftpCommand == "USER")
-	{
+	else if (ftpCommand == "USER") {
 		//provides the user logon.
 		foundCommand = true;
-		if (ftpParameter == FTP_USER){
+		if (ftpParameter == FTP_USER) {
 			ftpClient.println("331 User name okay, need password.");
 			currentUserState = Password;
 		}
@@ -250,21 +244,19 @@ boolean userCommands()
 		}
 	}
 	else if (ftpCommand == "PASS")
-	//Checks password and grants user access to all commands.
+		//Checks password and grants user access to all commands.
 	{
 		foundCommand = true;
 		//Check for userID is provided
-		if (currentUserState < Password){
+		if (currentUserState < Password) {
 			ftpClient.println("503 Login with USER first.");
 		}
-		else
-		{
+		else {
 			if (ftpParameter == FTP_PASSWORD) {
 				ftpClient.println("230 User logged in.");
 				currentUserState = userAuthenticated;
 			}
-			else
-			{
+			else {
 				ftpClient.println("530 Not logged in.");
 			}
 		}
@@ -272,103 +264,106 @@ boolean userCommands()
 	return foundCommand;
 }
 
-
-
-boolean testCommand()
+boolean serverCommands()
 {
+	if (ftpCommand == "SYST") {
+		foundCommand = true;
+		ftpClient.println("215 Arduino.");
+	}
 
-	if (ftpCommand == "TEST")
+	boolean testCommand()
 	{
-		if (!securityCheck(userAuthenticated)) return true;
-		ftpClient.println("666 Testing");
-	}
-}
 
-boolean securityCheck(byte allowedUserState)
-{
-	boolean isAllowed = false;
-	if (currentUserState >= allowedUserState) {
-		isAllowed = true;
+		if (ftpCommand == "TEST") {
+			if (!securityCheck(userAuthenticated)) return true;
+			ftpClient.println("666 Testing");
+		}
 	}
-	else
+
+	boolean securityCheck(byte allowedUserState)
 	{
-		ftpClient.println("530 Please login with USER and PASS.");
+		boolean isAllowed = false;
+		if (currentUserState >= allowedUserState) {
+			isAllowed = true;
+		}
+		else {
+			ftpClient.println("530 Please login with USER and PASS.");
+		}
+		return(isAllowed);
 	}
-	return(isAllowed);
-}
- void checkTimeOut()
- {
-	 //Checks if the current session has reached its timout value
-	 if (sessionTimeOut < millis()) {
-		 //if so closing the connection
-		 userDisconnect();
-	 }
- }
+	void checkTimeOut()
+	{
+		//Checks if the current session has reached its timout value
+		if (sessionTimeOut < millis()) {
+			//if so closing the connection
+			userDisconnect();
+		}
+	}
 
-//int8_t FtpServer::readChar()
-//{
-//	int8_t rc = -1;
-//
-//	if (client.available())
-//	{
-//		char c = client.read();
-//#ifdef FTP_DEBUG
-//		Serial << c;
-//#endif
-//		if (c == '\\')
-//			c = '/';
-//		if (c != '\r')
-//			if (c != '\n')
-//			{
-//				if (iCL < FTP_CMD_SIZE)
-//					cmdLine[iCL++] = c;
-//				else
-//					rc = -2; //  Line too long
-//			}
-//			else
-//			{
-//				cmdLine[iCL] = 0;
-//				command[0] = 0;
-//				parameters = NULL;
-//				// empty line?
-//				if (iCL == 0)
-//					rc = 0;
-//				else
-//				{
-//					rc = iCL;
-//					// search for space between command and parameters
-//					parameters = strchr(cmdLine, ' ');
-//					if (parameters != NULL)
-//					{
-//						if (parameters - cmdLine > 4)
-//							rc = -2; // Syntax error
-//						else
-//						{
-//							strncpy(command, cmdLine, parameters - cmdLine);
-//							command[parameters - cmdLine] = 0;
-//
-//							while (*(++parameters) == ' ')
-//								;
-//						}
-//					}
-//					else if (strlen(cmdLine) > 4)
-//						rc = -2; // Syntax error.
-//					else
-//						strcpy(command, cmdLine);
-//					iCL = 0;
-//				}
-//			}
-//		if (rc > 0)
-//			for (uint8_t i = 0; i < strlen(command); i++)
-//				command[i] = toupper(command[i]);
-//		if (rc == -2)
-//		{
-//			iCL = 0;
-//			client << "500 Syntax error\r\n";
-//		}
-//	}
-//	return rc;
-//}
+	//int8_t FtpServer::readChar()
+	//{
+	//	int8_t rc = -1;
+	//
+	//	if (client.available())
+	//	{
+	//		char c = client.read();
+	//#ifdef FTP_DEBUG
+	//		Serial << c;
+	//#endif
+	//		if (c == '\\')
+	//			c = '/';
+	//		if (c != '\r')
+	//			if (c != '\n')
+	//			{
+	//				if (iCL < FTP_CMD_SIZE)
+	//					cmdLine[iCL++] = c;
+	//				else
+	//					rc = -2; //  Line too long
+	//			}
+	//			else
+	//			{
+	//				cmdLine[iCL] = 0;
+	//				command[0] = 0;
+	//				parameters = NULL;
+	//				// empty line?
+	//				if (iCL == 0)
+	//					rc = 0;
+	//				else
+	//				{
+	//					rc = iCL;
+	//					// search for space between command and parameters
+	//					parameters = strchr(cmdLine, ' ');
+	//					if (parameters != NULL)
+	//					{
+	//						if (parameters - cmdLine > 4)
+	//							rc = -2; // Syntax error
+	//						else
+	//						{
+	//							strncpy(command, cmdLine, parameters - cmdLine);
+	//							command[parameters - cmdLine] = 0;
+	//
+	//							while (*(++parameters) == ' ')
+	//								;
+	//						}
+	//					}
+	//					else if (strlen(cmdLine) > 4)
+	//						rc = -2; // Syntax error.
+	//					else
+	//						strcpy(command, cmdLine);
+	//					iCL = 0;
+	//				}
+	//			}
+	//		if (rc > 0)
+	//			for (uint8_t i = 0; i < strlen(command); i++)
+	//				command[i] = toupper(command[i]);
+	//		if (rc == -2)
+	//		{
+	//			iCL = 0;
+	//			client << "500 Syntax error\r\n";
+	//		}
+	//	}
+	//	return rc;
+	//}
 
 
 
