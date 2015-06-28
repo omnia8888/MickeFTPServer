@@ -4,34 +4,39 @@
  Author:	Micke
 */
 
+#include <EthernetUdp.h>
+#include <EthernetServer.h>
+#include <EthernetClient.h>
+#include <Dns.h>
+#include <Dhcp.h>
 #include <SPI.h>
 #include <Ethernet.h>
 #include <SD.h>
 
 //Enable Debugging
-#define DEBUG
+#define DEBUG //Turns debug output to serial com.
 
-//Default values
+//Server settings
 #define FTP_USER "admin"
 #define FTP_PASSWORD "pass"
-//#define FTP_SERVER_IP "192, 168, 1, 99"
 #define FTP_PORT 21
-// MAC address from Ethernet shield sticker under board
+#define DHCP_ENABLED true
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 99); // IP address, may need to change depending on network
+
 
 #define CONNECTION_TIMEOUT 30000 //The user login idle before being disconnected
 
 // size of buffer used to capture HTTP requests
-#define REQ_BUF_SZ   50
+//#define REQ_BUF_SZ   50
 
 
 EthernetServer ftpServer(FTP_PORT);  // create a server at port 21
 EthernetClient ftpClient;
 
 //File webFile;               // the web page file on the SD card
-char HTTP_req[REQ_BUF_SZ] = { 0 }; // buffered HTTP request stored as null terminated string
-char req_index = 0;              // index into HTTP_req buffer
+//char HTTP_req[REQ_BUF_SZ] = { 0 }; // buffered HTTP request stored as null terminated string
+//char req_index = 0;              // index into HTTP_req buffer
 
 
 enum serverState
@@ -84,12 +89,13 @@ void setup() {
 	}
 	Serial.println("SUCCESS - SD card initialized.");
 
+	if (DHCP_ENABLED) {
+		Ethernet.begin(mac); //Get ip address from DHCP
+	}
+	else {		
+		Ethernet.begin(mac, ip);  // initialize Ethernet device with Fixed IP
+	}
 
-	//Running with DHCP
-	//Ethernet.begin(mac);
-
-	//Run with fixed IP
-	Ethernet.begin(mac, ip);  // initialize Ethernet device with Fixed IP
 
 	// print your local IP address:
 	Serial.print("My IP address: ");
@@ -112,23 +118,14 @@ void loop() {
 		ftpServer.println("220 Welcome to MickeFTPServer");
 		delay(1000);
 	}
-
 	ftpClient = ftpServer.available();  // try to get client
-
-	delay(1000);
-
 	if (ftpClient) {
 #ifdef DEBUG
-		serialDebug("User connected.");
+		serialDebug("Client found.");
 #endif
 		currentServerState = authenticatingUser;
 		currentUserState = UserId;
 		sessionTimeOut = millis() + CONNECTION_TIMEOUT;
-		
-		//Checks if it's a new connection and sends welcome message
-		//if (currentUserState == newUser) {
-		//	userConnect();
-		//}
 	}
 
 	while (ftpClient.connected()) {
@@ -213,24 +210,34 @@ void readFtpCommandString() {
 		//Reset cmdString
 		cmdString = "";
 		
-
-
 #ifdef DEBUG
-		serialDebug("FTP CMD", ftpCommand);
-		serialDebug("FTP Param", ftpParameter);
+		//Sending recived command and parameter to serial com
+		Serial.print("Recived CMD: ");
+		Serial.print(ftpCommand);
+		Serial.print(" ");
+		Serial.println(ftpParameter);
 #endif
-
 	}
-
-
-
-
 }
 
 boolean userCommands()
 {
 	boolean foundCommand = false;
-	if (ftpCommand == "USER")
+	if (ftpCommand == "AUTH")
+	{
+		foundCommand = true;
+		ftpClient.println("504 Security mechanism not implemented.");
+		
+		//if (ftpParameter == "TLS"){
+		//	ftpClient.println("534 Server does not support TLS secure connections.");
+		//}
+		//else if (ftpParameter == "SSL")
+		//{
+		//	ftpClient.println("534 Server does not support SSL.");
+		//}
+
+	}
+	else if (ftpCommand == "USER")
 	{
 		//provides the user logon.
 		foundCommand = true;
@@ -264,6 +271,8 @@ boolean userCommands()
 	}
 	return foundCommand;
 }
+
+
 
 boolean testCommand()
 {
