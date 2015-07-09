@@ -20,7 +20,9 @@
 #define FTP_USER "admin"
 #define FTP_PASSWORD "pass"
 #define FTP_PORT 21
-#define DHCP_ENABLED true
+#define FTP_ROOT_FOLDER "/"
+
+#define DHCP_ENABLED false
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 99); // IP address, may need to change depending on network
 
@@ -33,6 +35,7 @@ IPAddress ip(192, 168, 1, 99); // IP address, may need to change depending on ne
 
 EthernetServer ftpServer(FTP_PORT);  // create a server at port 21
 EthernetClient ftpClient;
+File workingDir;
 
 //File webFile;               // the web page file on the SD card
 //char HTTP_req[REQ_BUF_SZ] = { 0 }; // buffered HTTP request stored as null terminated string
@@ -72,203 +75,263 @@ void serialDebug(String desc = "", String val = "", String comment = "")
 	delay(500);
 }
 
+/*
 // the setup function runs once when you press reset or power the board
 void setup()
 {
-	Serial.begin(9600);       // for debugging
+Serial.begin(9600);       // for debugging
 
-	// disable Ethernet chip and SD Card
-	pinMode(10, OUTPUT);
-	digitalWrite(10, HIGH);
-	pinMode(4, OUTPUT);
-	digitalWrite(4, HIGH);
+//		 disable Ethernet chip and SD Card
+pinMode(10, OUTPUT);
+digitalWrite(10, HIGH);
+pinMode(4, OUTPUT);
+digitalWrite(4, HIGH);
 
+delay(1000);
+
+// initialize SD card
+Serial.println("Initializing SD card...");
+if (!SD.begin(4)) {
+Serial.println("ERROR - SD card initialization failed!");
+return;    // init failed
+}
+
+delay(1000);
+//open root folder
+Serial.println("Opening FTP Root folder...");
+workingDir = SD.open(FTP_ROOT_FOLDER);
+delay(1000);
+Serial.println(workingDir.isDirectory());
+if (!workingDir.isDirectory()) {
+Serial.println("ERROR - Could not open FTP Root folder.");
+//return;
+}
+Serial.println(workingDir.isDirectory());
+Serial.println("SUCCESS - FTP Root folder found and opened.");
+
+
+
+
+//Initalize ethernet connection
+if (DHCP_ENABLED) {
+Ethernet.begin(mac); //Get ip address from DHCP
+}
+else {
+Ethernet.begin(mac, ip);  // initialize Ethernet device with Fixed IP
+}
+// print your local IP address:
+Serial.print("My IP address: ");
+for (byte thisByte = 0; thisByte < 4; thisByte++) {
+// print the value of each byte of the IP address:
+Serial.print(Ethernet.localIP()[thisByte], DEC);
+Serial.print(".");
+}
+Serial.println(" ");
+
+ftpServer.begin();           // start to listen for clients
+
+
+}
+*/
+
+void setup()
+{
+	Serial.begin(9600);
 	// initialize SD card
 	Serial.println("Initializing SD card...");
-	if (!SD.begin(4)) {
+	if (!SD.begin()) {
 		Serial.println("ERROR - SD card initialization failed!");
 		return;    // init failed
 	}
 	Serial.println("SUCCESS - SD card initialized.");
 
-	if (DHCP_ENABLED) {
-		Ethernet.begin(mac); //Get ip address from DHCP
+	//open root folder
+	Serial.println("Opening FTP Root folder...");
+	workingDir = SD.open(FTP_ROOT_FOLDER);
+	if (!workingDir.isDirectory()) {
+		Serial.println("ERROR - Could not open FTP Root folder.");
+		return;
 	}
-	else {
-		Ethernet.begin(mac, ip);  // initialize Ethernet device with Fixed IP
-	}
-
-
-	// print your local IP address:
-	Serial.print("My IP address: ");
-	for (byte thisByte = 0; thisByte < 4; thisByte++) {
-		// print the value of each byte of the IP address:
-		Serial.print(Ethernet.localIP()[thisByte], DEC);
-		Serial.print(".");
-	}
-	Serial.println(" ");
-	Serial.println("Setup done!");
-	ftpServer.begin();           // start to listen for clients
+	Serial.println("SUCCESS - FTP Root folder found and opened.");
 }
 
-// the loop function runs over and over again until power down or reset
-void loop()
-{
-	currentServerState = noConnection;
-	//Broadcasting welcome message to make FTP clients to connect and start sending commands
-	if (currentServerState == noConnection) {
-		ftpServer.println("220 Welcome to MickeFTPServer");
-		delay(1000);
-	}
-	ftpClient = ftpServer.available();  // try to get client
-	if (ftpClient) {
-#ifdef DEBUG
-		serialDebug("Client found.");
-#endif
-		currentServerState = authenticatingUser;
-		currentUserState = UserId;
-		sessionTimeOut = millis() + CONNECTION_TIMEOUT;
-	}
-
-	while (ftpClient.connected()) {
-		//Clear command and parameter strings from old info.
-		ftpCommand = "";
-		ftpParameter = "";
-		//Read incoming commands
-		readFtpCommandString();
-
-		//Run the commands
-		if (ftpCommand != "") {
-			userCommands();
-			testCommand();
-		}
-		checkTimeOut();
-	}
-
-}
-
-//void userConnect() 
-//{
-//#ifdef DEBUG
-//	serialDebug("User connected");
-//#endif
-//	//Send welcome message to connected user
-//	ftpClient.println("220 Welcome to MickeFTPServer");
-//	ftpClient.println("220 This is an FTP Server for Arduino.");
-//	ftpClient.println("220 Developed by Micke");
-//	currentUserState = UserId;
-//	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
-//}
-
-void userDisconnect()
-{
-#ifdef DEBUG
-	serialDebug("User disconnected");
-#endif
-
-	ftpClient.println("221 Disconnecting\r\n");
-	ftpClient.stop();
-}
-
-void checkForUserID()
-{
-
-}
-
-void readFtpCommandString()
-{
-	boolean endFound = false;
-	int cmdLenght;
-	while (ftpClient.available()) {
-		//Serial.println("char found!");
-		char c = ftpClient.read();
-		//Read until until carrige return or new line is found.
-		if (c == '\n' || c == '\r') {
-			//Stop reading
-			endFound = true;
-			//cmdLenght = cmdString.length();
-		}
-
-		cmdString += c;
-		sessionTimeOut = millis() + CONNECTION_TIMEOUT;
-	}
-
-	//If end is found Parse the retrived cmdString
-	if (endFound) {
-		//Remove inital and ending white spaces
-		cmdString.trim();
-		//Search for the position first space character
-		int firstSpaceCharIndex = cmdString.indexOf(' ');
-		//Divide cmdString into command and parameter
-		ftpCommand = cmdString.substring(0, firstSpaceCharIndex);
-		ftpParameter = cmdString.substring(firstSpaceCharIndex);
-		ftpParameter.trim();
-		//Reset cmdString
-		cmdString = "";
-
-#ifdef DEBUG
-		//Sending recived command and parameter to serial com
-		Serial.print("Recived CMD: ");
-		Serial.print(ftpCommand);
-		Serial.print(" ");
-		Serial.println(ftpParameter);
-#endif
-	}
-}
-
-boolean userCommands()
-{
-	boolean foundCommand = false;
-	if (ftpCommand == "AUTH") {
-		foundCommand = true;
-		ftpClient.println("504 Security mechanism not implemented.");
-
-		//if (ftpParameter == "TLS"){
-		//	ftpClient.println("534 Server does not support TLS secure connections.");
-		//}
-		//else if (ftpParameter == "SSL")
-		//{
-		//	ftpClient.println("534 Server does not support SSL.");
-		//}
-
-	}
-	else if (ftpCommand == "USER") {
-		//provides the user logon.
-		foundCommand = true;
-		if (ftpParameter == FTP_USER) {
-			ftpClient.println("331 User name okay, need password.");
-			currentUserState = Password;
-		}
-		else {
-			ftpClient.println("332 Need account for login.");
-		}
-	}
-	else if (ftpCommand == "PASS")
-		//Checks password and grants user access to all commands.
+		// the loop function runs over and over again until power down or reset
+		void loop()
 	{
-		foundCommand = true;
-		//Check for userID is provided
-		if (currentUserState < Password) {
-			ftpClient.println("503 Login with USER first.");
+		currentServerState = noConnection;
+		//Broadcasting welcome message to make FTP clients to connect and start sending commands
+		if (currentServerState == noConnection) {
+			ftpServer.println("220 Welcome to MickeFTPServer");
+			delay(1000);
 		}
-		else {
-			if (ftpParameter == FTP_PASSWORD) {
-				ftpClient.println("230 User logged in.");
-				currentUserState = userAuthenticated;
+		ftpClient = ftpServer.available();  // try to get client
+		if (ftpClient) {
+#ifdef DEBUG
+			serialDebug("Client found.");
+#endif
+			currentServerState = authenticatingUser;
+			currentUserState = UserId;
+			sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+		}
+
+		while (ftpClient.connected()) {
+			//Clear command and parameter strings from old info.
+			ftpCommand = "";
+			ftpParameter = "";
+			//Read incoming commands
+			readFtpCommandString();
+
+			//Run the commands
+			if (ftpCommand != "") {
+				userCommands();
+				serverCommands();
+
+				testCommand();
+			}
+			checkTimeOut();
+		}
+
+	}
+
+	//void userConnect() 
+	//{
+	//#ifdef DEBUG
+	//	serialDebug("User connected");
+	//#endif
+	//	//Send welcome message to connected user
+	//	ftpClient.println("220 Welcome to MickeFTPServer");
+	//	ftpClient.println("220 This is an FTP Server for Arduino.");
+	//	ftpClient.println("220 Developed by Micke");
+	//	currentUserState = UserId;
+	//	sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+	//}
+
+	void userDisconnect()
+	{
+#ifdef DEBUG
+		serialDebug("User disconnected");
+#endif
+
+		ftpClient.println("221 Disconnecting\r\n");
+		ftpClient.stop();
+	}
+
+	void checkForUserID()
+	{
+
+	}
+
+	void readFtpCommandString()
+	{
+		boolean endFound = false;
+		int cmdLenght;
+		while (ftpClient.available()) {
+			//Serial.println("char found!");
+			char c = ftpClient.read();
+			//Read until until carrige return or new line is found.
+			if (c == '\n' || c == '\r') {
+				//Stop reading
+				endFound = true;
+				//cmdLenght = cmdString.length();
+			}
+
+			cmdString += c;
+			sessionTimeOut = millis() + CONNECTION_TIMEOUT;
+		}
+
+		//If end is found Parse the retrived cmdString
+		if (endFound) {
+			//Remove inital and ending white spaces
+			cmdString.trim();
+			//Search for the position first space character
+			int firstSpaceCharIndex = cmdString.indexOf(' ');
+			//Divide cmdString into command and parameter
+			ftpCommand = cmdString.substring(0, firstSpaceCharIndex);
+			ftpParameter = cmdString.substring(firstSpaceCharIndex);
+			ftpParameter.trim();
+			//Reset cmdString
+			cmdString = "";
+
+#ifdef DEBUG
+			//Sending recived command and parameter to serial com
+			Serial.print("Recived CMD: ");
+			Serial.print(ftpCommand);
+			Serial.print(" ");
+			Serial.println(ftpParameter);
+#endif
+		}
+	}
+
+	boolean userCommands()
+	{
+		boolean foundCommand = false;
+		if (ftpCommand == "AUTH") {
+			foundCommand = true;
+			ftpClient.println("504 Security mechanism not implemented.");
+
+			//if (ftpParameter == "TLS"){
+			//	ftpClient.println("534 Server does not support TLS secure connections.");
+			//}
+			//else if (ftpParameter == "SSL")
+			//{
+			//	ftpClient.println("534 Server does not support SSL.");
+			//}
+
+		}
+		else if (ftpCommand == "USER") {
+			//provides the user logon.
+			foundCommand = true;
+			if (ftpParameter == FTP_USER) {
+				ftpClient.println("331 User name okay, need password.");
+				currentUserState = Password;
 			}
 			else {
-				ftpClient.println("530 Not logged in.");
+				ftpClient.println("332 Need account for login.");
 			}
 		}
-	}
-	return foundCommand;
-}
 
-boolean serverCommands()
-{
-	if (ftpCommand == "SYST") {
-		foundCommand = true;
-		ftpClient.println("215 Arduino.");
+		else if (ftpCommand == "PASS")
+			//Checks password and grants user access to all commands.
+		{
+			foundCommand = true;
+			//Check for userID is provided
+			if (currentUserState < Password) {
+				ftpClient.println("503 Login with USER first.");
+			}
+			else {
+				if (ftpParameter == FTP_PASSWORD) {
+					ftpClient.println("230 User logged in.");
+					currentUserState = userAuthenticated;
+				}
+				else {
+					ftpClient.println("530 Not logged in.");
+				}
+			}
+		}
+		return foundCommand;
+	}
+
+	boolean serverCommands()
+	{
+		if (ftpCommand == "SYST") {
+			//foundCommand = true;
+			ftpClient.println("215 Arduino.");
+		}
+
+		if (ftpCommand == "FEAT") {
+			//foundCommand = true;
+			ftpClient.println("211-Extended features supported:");
+			ftpClient.println("211 END");
+		}
+
+		if (ftpCommand == "PWD") {
+			//foundCommand = true;
+			ftpClient.print("257 \"");
+			ftpClient.print(workingDir);
+			ftpClient.print("\" is current directory.");
+			Serial.println("sending working dir.");
+
+		}
 	}
 
 	boolean testCommand()
@@ -299,6 +362,14 @@ boolean serverCommands()
 			userDisconnect();
 		}
 	}
+
+	//todo testting todo
+
+	void ftpTestCmd()
+	{
+
+	}
+
 
 	//int8_t FtpServer::readChar()
 	//{
@@ -364,6 +435,7 @@ boolean serverCommands()
 	//	}
 	//	return rc;
 	//}
+
 
 
 
